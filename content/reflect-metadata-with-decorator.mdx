@@ -1,0 +1,204 @@
+---
+title: "มาฝึกใช้ Reflect-metadata กับ Decorator ใน NestJs/Typescript กันเถอะ"
+publishedAt: "2025-09-14"
+summary: "มาฝึกใช้ Reflect-metadata กับ Decorator ใน NestJs/Typescript กันเถอะ"
+image: "/thumbnail/reflection.jpg"
+---
+![captionless image](/thumbnail/reflection.jpg)
+
+[Reference](https://medium.com/@pro.kittikun.2546/%E0%B8%A1%E0%B8%B2%E0%B8%9D%E0%B8%B6%E0%B8%81%E0%B9%83%E0%B8%8A%E0%B9%89-reflect-metadata-%E0%B8%81%E0%B8%B1%E0%B8%9A-decorator-%E0%B9%83%E0%B8%99-nestjs-typescript-%E0%B8%81%E0%B8%B1%E0%B8%99%E0%B9%80%E0%B8%96%E0%B8%AD%E0%B8%B0-b7958671f302)
+
+by [Pro Kittikun](https://medium.com/@pro.kittikun.2546?source=post_page---byline--e1319c407b64---------------------------------------)
+
+
+> เนื้อหาด้านล่างทั้งหมดล้วนเป็นการสรุปความเข้าใจจากสิ่งที่ผมได้ลองอ่านบทความต่าง ๆ และลองลงมือทำจริง หากมีส่วนใดไม่ถูกต้องสามารถขยายความหรือชี้แนะเพื่อปรับปรุงได้ครับ
+
+### TypeScript Decorator คืออะไร
+
+ใน TypeScript/JavaScript, **Decorator** เป็น syntax พิเศษที่ใช้สัญลักษณ์ `@` เพื่อ "ตกแต่ง" class, method, property หรือ parameter ถ้าเป็นใน NestJs เราอาจจะได้เคยเห็นกันมาบ้างเช่น `@Injectable` หรือ `@Controller` พวกนี้ต่างเป็น Decorator ทั้งหมด
+
+ตัวอย่าง Decorator และผลลัพธ์ที่จะเกิดขึ้น
+
+```tsx
+// Method Decorator แสดง log ก่อนและหลังเรียก method จริง
+function LogExecution() {
+  return function (
+    target: any,
+    propertyKey: string,
+    descriptor: PropertyDescriptor
+  ) {
+    const originalMethod = descriptor.value; // เก็บ method เดิมไว้
+    // แทนที่ method ด้วย function ใหม่
+    descriptor.value = function (...args: any[]) {
+      console.log(`[LogExecution] Calling "${propertyKey}" with:`, args);
+      const result = originalMethod.apply(this, args); // เรียก method เดิม
+      console.log(`[LogExecution] "${propertyKey}" returned:`, result);
+      return result;
+    };
+    return descriptor; // คืน descriptor ใหม่ให้ class ใช้
+  };
+}
+```
+```tsx
+class Calculator {
+  @LogExecution()
+  add(a: number, b: number) {
+    return a + b;
+  }
+  @LogExecution()
+  multiply(a: number, b: number) {
+    return a * b;
+  }
+}
+const calc = new Calculator();
+calc.add(2, 3);
+// [LogExecution] Calling "add" with: [2, 3]
+// [LogExecution] "add" returned: 5
+calc.multiply(4, 5);
+// [LogExecution] Calling "multiply" with: [4, 5]
+// [LogExecution] "multiply" returned: 20
+```
+
+### **Reflect-metadata คืออะไร**
+
+Reflect-metadata เป็น library ที่ช่วยให้เราสามารถเก็บและดึง **metadata** (ข้อมูลเกี่ยวกับข้อมูล) ออกมาจาก class, method, หรือ property ได้นั่นเองครับ
+
+แล้วทำไมเราถึงต้องใช้ Reflect-metadata . . . คำตอบก็คืออ โดยปกติแล้ว เมื่อเราเขียนโค้ดด้วย TypeScript และทำการ compile เป็น JavaScript ตัว runtime จะไม่รู้ว่า property มี type อะไร (เช่น `string`, `number`) เพราะ type ของ TypeScript จะถูกลบออกตอน compile เหลือเป็น JS ธรรมดา ดังนั้นถ้าอยากเก็บข้อมูลพวก type information และ custom metadata ไว้ใช้งานตอน runtime เราจึงต้องใช้ **Reflect-metadata** ร่วมกับ **Decorator** เพื่อเก็บข้อมูลเหล่านี้ไว้ และดึงกลับมาใช้งานได้ในภายหลัง
+
+ตัวอย่างการใช้งาน Reflect-metadata กับ Decorator
+
+```tsx
+const REQUIRED_METADATA_KEY = Symbol("required"); // ใช้ Symbol ป้องกัน key ชนกัน
+export function Required(target: any, propertyKey: string) {
+  // กำหนด metadata ว่า property นี้เป็น required
+  Reflect.defineMetadata(REQUIRED_METADATA_KEY, true, target, propertyKey);
+}
+export function isRequired(target: any, propertyKey: string): boolean {
+  // อ่าน metadata ว่า property นั้นมี required ไหม
+  return Reflect.getMetadata(REQUIRED_METADATA_KEY, target, propertyKey) === true;
+}
+```
+```tsx
+export class User {
+  @Required // บอกว่า property name เป็นฟิลด์บังคับ
+  name: string;
+  age: number;
+}
+```
+```tsx
+export function validate(obj: any) {
+  for (const key of Object.keys(obj)) {
+    // ถ้า property ถูก mark ว่า required แต่ไม่มีค่าจะแจ้ง error
+    if (isRequired(obj, key) && !obj[key]) {
+      console.log(`❌ Property "${key}" is required`);
+    }
+  }
+}
+// Example usage
+const user = new User();
+user.age = 25; // ใส่แค่ age ไม่ใส่ name
+validate(user);
+// Output: ❌ Property "name" is required
+```
+
+มาลองมาดูตัวอย่างการนำ Decorator ไปใช้งานจริง ๆ ของ NestJs เช่น `@Injectable` , `@Inject`กันว่าเบื้องหลังมันเป็นยังไง
+
+```tsx
+const TOKENS = {
+  Hello: Symbol("HelloService"), // <-- DI Token
+};
+@Injectable() // <--------
+class HelloService {
+  sayHi() {
+    return "Hello World!";
+  }
+}
+```
+
+เมื่อเราประกาศ @Injectable() ไว้ด้านบน Class สิ่งที่มันจะทำคือการ Register ตัว Class ของเราเข้าไปใน [IoC Container](https://www.tutorialsteacher.com/ioc/ioc-container)
+
+```tsx
+function Injectable() {
+  return function (target: any) {
+    // Nest จริง ๆ จะทำมากกว่านี้ เช่น จัดการ scope
+    // แต่ simplified เราจะ register class เข้า container เลย
+    container.register(target, target);
+  };
+}
+```
+
+> ตัวอย่างเบื้องหลังของ Injectable Decorator โดยตัว Container ในที่นี่ก็คือตัว IoC Container ซึ่งเป็น instance ตัวกลางที่ไว้เก็บรวบรวม provider หรือ instance อื่น ๆ Note: การใช้ Injectable ใน NestJs จะทำให้ instance ของเราเป็น [Singleton](https://refactoring.guru/design-patterns/singleton) โดย default อีกด้วย
+
+```tsx
+class Container {
+  private providers = new Map<any, any>(); // token -> provider or instance
+  // บอก container ว่า token นี้ใช้ provider ตัวไหน
+  register(token: any, provider: any) {
+    this.providers.set(token, provider);
+  }
+  // เวลา resolve → container new ให้เอง + inject dependencies
+  resolve<T>(token: any): T {
+    const target = this.providers.get(token);
+    if (!target) throw new Error(`No provider for ${token.toString()}`);
+    // ถ้าเป็น class → new instance
+    if (typeof target === "function") {
+      // อ่าน constructor dependencies
+      const paramTypes = Reflect.getMetadata("design:paramtypes", target) || []
+      
+      const injectedTokens = Reflect.getMetadata("custom:inject_tokens", target) || {};
+      
+      // ตรงนี้จะเป็น recursive เพราะใน instance 
+      // ที่ได้มาอาจจะต้องการใช้ dependency injection ตัวอื่นอีก
+      const deps = paramTypes.map((dep, index) => {
+        const actualToken = injectedTokens[index] || dep;
+        return this.resolve(actualToken);
+      });
+      const instance = new target(...deps);
+      // singleton
+      this.providers.set(token, instance);
+      return instance;
+    }
+    // ถ้าเป็น instance อยู่แล้วก็จะ return ออกไปเลย
+    return target;
+  }
+}
+```
+
+> ตัวอย่างโค้ดของเจ้าตัว Container ที่ให้ ChatGPT คิดมาคร่าว ๆ ของจริงมันอาจจะไม่ได้ Implement แบบนี้นะครับ55555😂
+> Note: `design:paramtypes` ไม่ใช่ metadata ที่เรา define เอง แต่เป็นของ **TypeScript compiler + reflect-metadata** ที่ช่วย generate ให้ **อัตโนมัติ** ตอนเราใช้ **decorator + emitDecoratorMetadata** ใน file tsconfig.json จึงต้องมีการใส่แบบนี้{
+> “compilerOptions”: {
+> “experimentalDecorators”: true,
+> “emitDecoratorMetadata”: true
+> }
+> }
+
+และเมื่อเราต้องการเรียกใช้ Class HelloService ใน Class อื่น ปกติเราก็ต้องใช้วิธี Dependency Injection ใช่มั้ยครับ หรือตามตัวอย่างโค้ดด้านล่างนี้
+
+```tsx
+@Injectable()
+class AppService {
+  constructor(@Inject(TOKENS.Hello) private hello: HelloService) {} // <-- DI`
+  run() {
+    console.log(this.hello.sayHi());
+  }
+}
+```
+
+หลังจากเราใส่ `@Inject(TOKENS.Hello)` ตัว Decorator ตัวนี้จะทำการเก็บ metadata ว่า parameter index นี้ต้องใช้ DI Token คือ `TOKENS.Hello`
+
+```tsx
+function Inject(token: any) {
+  return function (target: any, propertyKey: string | symbol, parameterIndex: number) {
+    // เก็บ metadata ว่าพารามิเตอร์ index นี้ ต้องใช้ token ที่กำหนด
+    const existingInjectedTokens = Reflect.getMetadata("custom:inject_tokens", target) || {};
+    existingInjectedTokens[parameterIndex] = token;
+    Reflect.defineMetadata("custom:inject_tokens", existingInjectedTokens, target);
+  };
+}
+```
+
+.
+
+จากนั้นเมื่อการเรียกใช้ resolve function ของตัว container มันก็จะเกิดการ new instance และทำ dependency injection ให้เราอัตโนมัตินั่นเองครับ
+
+ทั้งนี้เราสามารถนำเทคนิคนี้ไปปรับใช้ในสถานะการณ์อื่น ๆ ได้อีกมากมายครับ

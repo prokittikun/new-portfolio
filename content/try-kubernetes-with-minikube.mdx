@@ -1,0 +1,157 @@
+---
+title: "ลองใช้ Kubernetes ด้วย Minikube + Deploy Nginx ฉบับเด็กฝึกงาน Ep.1"
+publishedAt: "2025-08-29"
+summary: "ลองใช้ Kubernetes ด้วย Minikube + Deploy Nginx ฉบับเด็กฝึกงาน Ep.1"
+image: "/thumbnail/k8s.png"
+---
+
+
+
+![captionless image](/thumbnail/k8s.png)
+
+[Reference](https://medium.com/@pro.kittikun.2546/%E0%B8%A5%E0%B8%AD%E0%B8%87%E0%B9%83%E0%B8%8A%E0%B9%89-kubernetes-%E0%B8%94%E0%B9%89%E0%B8%A7%E0%B8%A2-minikube-deploy-nginx-%E0%B8%89%E0%B8%9A%E0%B8%B1%E0%B8%9A%E0%B9%80%E0%B8%94%E0%B9%87%E0%B8%81%E0%B8%9D%E0%B8%B6%E0%B8%81%E0%B8%87%E0%B8%B2%E0%B8%99-ep-1-e1319c407b64)
+
+by [Pro Kittikun](https://medium.com/@pro.kittikun.2546?source=post_page---byline--e1319c407b64---------------------------------------)
+
+
+
+
+สวัสดีครับ นี่เป็น blog แรกของผมบน Medium
+
+blog นี้เกิดขึ้นจากความต้องการที่จะสรุปความเข้าใจของผมเองเกี่ยวกับการสร้าง Kubernetes cluster ด้วย Minikube รวมถึงเป็นการเตรียมตัวสำหรับการ Demo ให้พี่ ๆ ในทีมได้เข้าใจในสิ่งที่ผมทำ (ซึ่งผมเองมีความกังวลอยู่พอสมควรในการที่ต้องเล่าหรืออธิบาย55555😅)
+
+เนื่องจากเป็น blog แรกของผมเอง หากมีส่วนไหนที่ผิดพลาด ตกหล่น หรือสามารถปรับปรุงได้ดีกว่านี้ ผมยินดีรับฟังความคิดเห็นและข้อเสนอแนะจากทุกคนมาก ๆ ครับ
+
+.
+
+.
+
+> เกริ่นก่อนว่าสิ่งที่ผมจะแบ่งปันในบทความนี้เกิดขึ้นจากประสบการณ์จากการฝึกงาน ซึ่งเป็น task งานในช่วง sprint ที่ผ่านมา ผมได้รับมอบหมายให้ทำการทดสอบการทำงานของ **liveness probe** ใน Kubernetes (liveness probe ก็คือการที่ Kubernetes จะทำการตรวจสอบว่า container ยังทำงานอยู่หรือเปล่า หากตรวจพบว่า container crash หรือไม่ตอบสนอง ก็จะทำการ restart ใหม่โดยอัตโนมัติ) ซึ่งผมจะมาพูดถึงเรื่องการทำ **liveness probe** อีกทีใน blog ถัด ๆ ไป ส่วน blog นี้จะโฟกัสไปที่การ setup Kubernetes cluster ใน local กันก่อนครับ
+
+เริ่มกันเลยยย…
+
+.
+
+> **Kubernetes คืออะไร**
+
+**Kubernetes** (เรียกย่อ ๆ ว่าk8s) เป็น container orchestration platform ที่ช่วยจัดการ containers (เช่นที่รันด้วย Docker) ให้ทำงานอัตโนมัติ หรือขยายได้ตามความต้องการ
+
+> **ทำไมต้อง Kubernetes**
+
+1.  **Container Orchestration ที่อัตโนมัติ:** K8s จัดการ container lifecycle ทั้งหมดให้ รวมถึงการ restart container ที่ล่ม การ distribute workload และการจัดการ resource
+2.  **Service Discovery และ Load Balancing ในตัว:** K8s มี built-in service discovery และ load balancer ทำให้ container สามารถค้นหาและเชื่อมต่อกันได้อย่างง่ายดาย
+3.  **Horizontal Pod Autoscaler (HPA):** ปรับจำนวน pod อัตโนมัติตาม CPU, memory หรือ custom metrics ที่กำหนด ทำให้ประหยัดค่าใช้จ่ายและรองรับ load ได้ดี
+4.  **Rolling Updates และ Rollbacks:** K8s มี rolling update ที่ค่อย ๆ ปรับจากเวอร์ชันเก่าเป็นเวอร์ชันใหม่ (เมื่อเรามีการ deploy เวอร์ชันใหม่ ๆ) แบบไม่ทำให้ระบบล่ม และถ้าเกิดปัญหาก็ rollback กลับไปเวอร์ชันเดิมได้ทันที
+5.  **Self-healing:** เมื่อ pod หรือ node ล่ม K8s จะสร้างใหม่อัตโนมัติและย้าย workload ไปยัง node ที่มี resource เพียงพอ
+
+> [อ่านต่อที่นี่](https://kubernetes.io/docs/concepts/overview/#:~:text=from%20the%20community.-,Why%20you%20need%20Kubernetes%20and%20what%20it%20can%20do,-Containers%20are%20a)
+
+.
+
+> **ทำความรู้จักกับคำสำคัญที่ใช้ใน Blog นี้**
+
+**Node** คือเครื่อง (จริงหรือเสมือน) ที่ Kubernetes ใช้ในการรัน workload โดยบน Node จะมี component สำคัญ เช่น Kubelet ที่ทำหน้าที่จัดการ Pod, Kube Proxy ที่ดูแลการสื่อสารเครือข่าย และ Container Runtime ที่ใช้รัน container แต่ละ cluster จะมีทั้ง control-plane node สำหรับควบคุม cluster และ worker node
+
+**Pod** คือหน่วยที่เล็กที่สุดใน Kubernetes ที่เราสามารถ deploy ได้ ซึ่งจะประกอบด้วย container หนึ่งตัวหรือมากกว่า ที่ใช้ network และ storage ร่วมกัน Pod แต่ละตัวจะมี IP address เป็นของตัวเอง และ containers ที่อยู่ใน Pod เดียวกันจะสามารถคุยกันผ่าน localhost ได้เลย
+
+**Deployment** ทำหน้าที่เป็นตัวจัดการ Pod ให้เรา โดยที่เราสามารถบอกได้ว่าต้องการให้มี Pod กี่ตัว, ต้องการ update แบบไหน, หรือถ้าเกิดมีอะไรผิดพลาดต้อง rollback กลับ เมื่อเราสร้าง Deployment แล้ว มันจะไปสร้าง ReplicaSet (ตัวที่คอยดูแลจำนวน Pod) และ Pod ขึ้นมาให้เราโดยอัตโนมัติ
+
+**Service** ทำหน้าที่เป็นประตูทางเข้าสู่ Pod ต่าง ๆ เนื่องจาก Pod มี IP ที่เปลี่ยนแปลงได้เวลา restart แต่ Service จะมี IP ที่คงที่และทำ load balancing ไปยัง Pod ที่อยู่ข้างหลัง Service มีหลายแบบ เช่น ClusterIP (ใช้ได้แค่ภายใน cluster), NodePort (เข้าได้จากภายนอกผ่าน Node), LoadBalancer (สำหรับ cloud)
+
+.
+
+.
+
+เริ่มแรกเราต้องติดตั้งตัว **Kubernetes CLI** ซึ่งหากใช้ Mac และมี Homebrew อยู่แล้วสามารถติดตั้งด้วยคำสั่งนี้
+
+```
+brew install kubernetes-cli
+```
+
+Kubernetes-CLI (kubectl) เป็นเครื่องมือ Client เอาไว้สั่งงาน Kubernetes ถ้าจะใช้งานได้ เราต้องมี cluster ที่จะเชื่อมต่อด้วย (local หรือ remote) ซึ่งในที่นี่เราจะใช้เป็น local ก็คือตัว Minikube ให้เราติดตั้งด้วยคำสั่งนี้ได้เลย
+
+```
+brew install minikube
+```
+
+หลังจากมีทั้ง **Kubectl** และ **Minikube** แล้ว ให้ลองรัน Cluster ด้วยคำสั่ง
+
+```
+minikube start
+```
+
+คำสั่งนี้จะสร้าง **Kubernetes Cluster** จำลองขึ้นมาในเครื่องของเรา โดยใช้ VM driver เช่น Docker
+
+จากนั้นลองเช็คสถานะด้วยคำสั่ง
+
+```
+minikube status 
+```
+
+หรือใช้คำสั่งด้านล่างเพื่อดู **Node** ที่มีอยู่ใน cluster
+
+```
+kubectl get nodes
+```
+
+ซึ่งผลลัพธ์ที่เราควรเห็นก็คือ **Minikube** ของเรามีสถานะขึ้นบอกว่า ready เท่านี้เราก็สามารถเริ่มใช้งานได้แล้วโดยจะลองติดตั้งตัว **Nginx** เพื่อทดสอบการทำงาน
+
+```
+kubectl create deployment nginx --image=nginx
+```
+
+โดยคำสั่งนี้จะสร้าง **Deployment** ชื่อ Nginx บน Kubernetes โดยใช้ container image Nginx จาก Docker Hub ซึ่ง Deployment จะเป็นตัวจัดการ **ReplicaSet** (ReplicaSet ทำหน้าที่คอยควบคุมจำนวน Pod ให้ตรงตามที่กำหนด) และ ReplicaSet จะสร้าง Pod ขึ้นมาหนึ่งตัวเพื่อรัน Nginx ให้พร้อมใช้งานนั่นเองครับ
+
+จากนั้นตรวจสอบว่า Deployment และ Pod ถูกสร้างแล้วด้วยคำสั่ง
+
+```
+kubectl get deployments
+kubectl get pods
+```
+
+จะเห็น Deployment ชื่อ `nginx` และ Pod 1 ตัวที่รันอยู่
+
+แต่ตอนนี้เราจะยังเข้าถึงตัว Nginx ไม่ได้ เพราะ Pod ที่รัน Nginx อยู่ตอนนี้สามารถเข้าถึงได้แค่ **ภายใน cluster** เท่านั้น เราจึงต้องมี Service มาคอยทำหน้าที่เป็นตัวกลางให้เราสามารถเข้าถึง Pod ได้จากภายนอกด้วยคำสั่ง
+
+
+```
+kubectl expose deployment nginx --port=80 --type=NodePort
+```
+![https://www.kreyman.de/index.php/kubernetes/261-kubernetes-netzwerk-architektur-service-typen](https://miro.medium.com/v2/resize:fit:920/format:webp/0*ENUSEG3GFkwIDbUk.jpg)
+
+> `--type=NodePort` → กำหนดให้ Service ที่สร้างขึ้นเป็นแบบ NodePort ซึ่งเปิดให้เข้าถึงจากภายนอก cluster ได้ (ผ่าน Node)โดย Kubernetes จะสุ่มเลือกพอร์ตในช่วง 30000–32767 ให้ เราจึงสามารถเข้าถึง Nginx ผ่าน `http://<NodeIP>:<NodePort>` ได้
+
+สามารถใช้คำสั่งในการดู Service ที่ถูกสร้างมาเมื่อสักครู่ได้ด้วยคำสั่ง
+
+```
+kubectl get service
+```
+
+.
+
+.
+
+เนื่องจากเราใช้ Minikube เราจึงต้องทำการ **Forward port** ออกมาภายนอกอีกครั้งเพื่อให้เข้าถึงจากเครื่อง Host ของเราได้ (ไม่สามารถเข้าตรง ๆ ผ่าน `_http://<NodeIP>:<NodePort>_`) และ Minikube เองมีคำสั่งตรงนี้ไว้ให้อยู่แล้ว
+
+```
+minikube service nginx
+```
+![captionless image](https://miro.medium.com/v2/resize:fit:1400/format:webp/1*IUiIdwaQKFodtCvEAl185w.png)
+
+> ให้เราใช้ URL ที่เป็น localhost สำหรับเข้าถึง Nginx service เนื่องจาก Minikube ได้สร้าง tunnel เชื่อมต่อระหว่างเครื่อง host กับ cluster ให้เราอัตโนมัติ
+
+หรือ
+
+```
+kubectl port-forward service/nginx 8080:80
+```
+
+โดยคำสั่งนี้จะทำ port forwarding โดยตรงจาก nginx service ที่รันอยู่บนพอร์ต 80 ภายใน cluster มายังพอร์ต 8080 บนเครื่อง localhost ของเรา
+
+### **สรุป**
+
+จากที่เราได้ลองเล่น Kubernetes และ Minikube จากการสร้าง cluster, การ deploy Nginx เป็น application, การสร้าง Service แบบ NodePort เพื่อให้เข้าถึงจากภายนอก cluster, และการใช้ port forwarding ด้วย `minikube service` และ `kubectl port-forward`หากลองทำตามแล้วพบปัญหา สามารถ debug ได้ด้วยคำสั่งต่าง ๆ เช่น `kubectl get pods`, `kubectl describe pod <pod-name>`, `kubectl logs <pod-name>`, และ `minikube status`
+
+ใน EP ถัดไป ผมจะมาแบ่งปันเรื่อง Liveness Probe ที่เป็น task หลักที่ผมได้รับมอบหมาย ซึ่งจะครอบคลุมเรื่อง Health Check ใน Kubernetes, ความแตกต่างระหว่าง Liveness, Readiness, การทดสอบให้ Pod crash และดูการทำงานของ auto-restart
+
+หากใครมีคำถาม ข้อสงสัย หรือต้องการแบ่งปันประสบการณ์เกี่ยวกับ Kubernetes สามารถ comment ได้เลยครับ ยินดีแลกเปลี่ยนความรู้กันมาก ๆ ครับ
