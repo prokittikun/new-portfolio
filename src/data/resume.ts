@@ -49,7 +49,7 @@ export const DATA = {
     "I'm a software engineer from Thailand who likes the whole stack: designing schemas, wiring up queues, shipping UIs and then trying to break all of it with load and security tests.",
     "My path started at programming competitions in vocational college and continued through a CS degree at Kasetsart. Along the way I picked up a habit of learning in public, writing up what I figure out so the next person has an easier time.",
   ],
-  avatarUrl: "/portrait-grad.jpg",
+  avatarUrl: "/portrait-stairs.jpg",
   contact: {
     email: "pro.kittikun.2546@gmail.com",
     social: [
